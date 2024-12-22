@@ -1,13 +1,19 @@
-import React, { useRef, useEffect, useState, useCallback } from "react";
+import React, { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import Webcam from "react-webcam";
 import * as tf from "@tensorflow/tfjs";
 import * as poseDetection from "@tensorflow-models/pose-detection";
 import "@tensorflow/tfjs-backend-webgl";
+import { isDeviantBehavior, isFallingBehavior } from "./utils/is-deviant-behavior";
+
+const COEF_SCORE = 0.4;
 
 const App: React.FC = () => {
 	const webcamRef = useRef<Webcam>(null);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const [detector, setDetector] = useState<poseDetection.PoseDetector | null>(null);
+	const [previousPose, setPreviousPose] = useState<poseDetection.Pose | null>(null);
+	const [lastFrameTime, setLastFrameTime] = useState<number | null>(null);
+	const [logs, setLogs] = useState<string[]>([]); // State to store logs
 
 	// Initialize TensorFlow backend
 	useEffect(() => {
@@ -18,6 +24,101 @@ const App: React.FC = () => {
 
 		initializeBackend();
 	}, []);
+
+	// Add log entry
+	const addLog = useCallback((message: string) => {
+		const timestamp = new Date().toLocaleTimeString();
+		setLogs((prevLogs) => [...prevLogs, `[${timestamp}] ${message}`]);
+	}, []);
+
+	// List of behavior checkers
+	const behaviorCheckers = useMemo(
+		() => [
+			{
+				check: isDeviantBehavior,
+				message: "Обнаружено девиатное поведение",
+			},
+			{
+				check: (currentPose: poseDetection.Pose) =>
+					previousPose && lastFrameTime
+						? isFallingBehavior(previousPose, currentPose, performance.now() - lastFrameTime)
+						: false,
+				message: "Обнаружено девиантное поведение",
+			},
+		],
+		[previousPose, lastFrameTime]
+	);
+
+	// Draw poses on canvas
+	const drawCanvas = useCallback(
+		(poses: poseDetection.Pose[], video: HTMLVideoElement) => {
+			const canvas = canvasRef.current;
+			if (!canvas) return;
+
+			const ctx = canvas.getContext("2d");
+			if (!ctx) return;
+
+			canvas.width = video.videoWidth;
+			canvas.height = video.videoHeight;
+
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+			// Draw video frame on canvas
+			ctx.save();
+			ctx.scale(-1, 1); // Mirror the video horizontally
+			ctx.translate(-canvas.width, 0);
+			ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+			ctx.restore();
+
+			poses.forEach((pose) => {
+				let isDeviant = false;
+
+				// Check all behavior patterns
+				behaviorCheckers.forEach(({ check, message }) => {
+					if (check(pose)) {
+						isDeviant = true;
+						addLog(message);
+					}
+				});
+
+				// Set color based on deviant behavior
+				const skeletonColor = isDeviant ? "red" : "blue";
+
+				pose.keypoints.forEach((keypoint) => {
+					if (keypoint.score && keypoint.score > COEF_SCORE) {
+						// Mirror the x-coordinate of the keypoint
+						const mirroredX = canvas.width - keypoint.x;
+						const { y } = keypoint;
+						ctx.beginPath();
+						ctx.arc(mirroredX, y, 5, 0, 2 * Math.PI);
+						ctx.fillStyle = skeletonColor;
+						ctx.fill();
+					}
+				});
+
+				// Draw skeleton
+				const adjacentKeyPoints = poseDetection.util.getAdjacentPairs(
+					poseDetection.SupportedModels.MoveNet
+				);
+				adjacentKeyPoints.forEach(([start, end]) => {
+					const kp1 = pose.keypoints[start];
+					const kp2 = pose.keypoints[end];
+
+					if (kp1.score && kp1.score > COEF_SCORE && kp2.score && kp2.score > COEF_SCORE) {
+						const mirroredX1 = canvas.width - kp1.x;
+						const mirroredX2 = canvas.width - kp2.x;
+						ctx.beginPath();
+						ctx.moveTo(mirroredX1, kp1.y);
+						ctx.lineTo(mirroredX2, kp2.y);
+						ctx.strokeStyle = skeletonColor;
+						ctx.lineWidth = 2;
+						ctx.stroke();
+					}
+				});
+			});
+		},
+		[behaviorCheckers, addLog]
+	);
 
 	// Load Pose Detection Model
 	useEffect(() => {
@@ -46,61 +147,16 @@ const App: React.FC = () => {
 			const video = webcamRef.current.video as HTMLVideoElement;
 			const poses = await detector.estimatePoses(video);
 
+			// Draw poses on canvas
 			drawCanvas(poses, video);
 
-			// Example: Log poses keypoints (use these for deviant behavior analysis)
+			// Update previous pose and time for falling detection
 			if (poses.length > 0) {
-				console.log(poses);
+				setPreviousPose(poses[0]);
+				setLastFrameTime(performance.now());
 			}
 		}
-	}, [detector]);
-
-	// Draw poses on canvas
-	const drawCanvas = (poses: poseDetection.Pose[], video: HTMLVideoElement) => {
-		const canvas = canvasRef.current;
-		if (!canvas) return;
-
-		const ctx = canvas.getContext("2d");
-		if (!ctx) return;
-
-		canvas.width = video.videoWidth;
-		canvas.height = video.videoHeight;
-
-		ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-		// Draw video frame on canvas
-		ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-		poses.forEach((pose) => {
-			pose.keypoints.forEach((keypoint) => {
-				if (keypoint.score && keypoint.score > 0.5) {
-					const { x, y } = keypoint;
-					ctx.beginPath();
-					ctx.arc(x, y, 5, 0, 2 * Math.PI);
-					ctx.fillStyle = "red";
-					ctx.fill();
-				}
-			});
-
-			// Draw skeleton
-			const adjacentKeyPoints = poseDetection.util.getAdjacentPairs(
-				poseDetection.SupportedModels.MoveNet
-			);
-			adjacentKeyPoints.forEach(([start, end]) => {
-				const kp1 = pose.keypoints[start];
-				const kp2 = pose.keypoints[end];
-
-				if (kp1.score && kp1.score > 0.5 && kp2.score && kp2.score > 0.5) {
-					ctx.beginPath();
-					ctx.moveTo(kp1.x, kp1.y);
-					ctx.lineTo(kp2.x, kp2.y);
-					ctx.strokeStyle = "blue";
-					ctx.lineWidth = 2;
-					ctx.stroke();
-				}
-			});
-		});
-	};
+	}, [detector, drawCanvas]);
 
 	// Continuously detect poses
 	useEffect(() => {
@@ -109,39 +165,62 @@ const App: React.FC = () => {
 		}, 100);
 
 		return () => clearInterval(interval);
-	}, [detect, detector]);
+	}, [detect]);
 
 	return (
-		<div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-			<h1>Deviant Behavior Detection</h1>
-			<Webcam
-				ref={webcamRef}
-				style={{
-					position: "absolute",
-					marginLeft: "auto",
-					marginRight: "auto",
-					left: 0,
-					right: 0,
-					textAlign: "center",
-					zIndex: 9,
-					width: 640,
-					height: 480,
-				}}
-			/>
-			<canvas
-				ref={canvasRef}
-				style={{
-					position: "absolute",
-					marginLeft: "auto",
-					marginRight: "auto",
-					left: 0,
-					right: 0,
-					textAlign: "center",
-					zIndex: 9,
-					width: 640,
-					height: 480,
-				}}
-			/>
+		<div
+			style={{
+				display: "flex",
+				flexDirection: "row",
+				alignItems: "flex-start",
+				width: "100vw",
+				height: "100vh",
+			}}>
+			<div style={{ position: "relative", width: '640px', height: '480px' }}>
+				<Webcam
+					ref={webcamRef}
+					style={{
+						position: "absolute",
+						marginLeft: "auto",
+						marginRight: "auto",
+						left: 0,
+						right: 0,
+						textAlign: "center",
+						zIndex: 9,
+						width: 640,
+						height: 480,
+					}}
+				/>
+				<canvas
+					ref={canvasRef}
+					style={{
+						position: "absolute",
+						marginLeft: "auto",
+						marginRight: "auto",
+						left: 0,
+						right: 0,
+						textAlign: "center",
+						zIndex: 9,
+						width: 640,
+						height: 480,
+					}}
+				/>
+			</div>
+			<div style={{ marginLeft: 20, width: 300 }}>
+				<h2>Логи</h2>
+				<div
+					style={{
+						height: 480,
+						overflowY: "scroll",
+						border: "1px solid #ccc",
+						padding: 10,
+						backgroundColor: "#f9f9f9",
+					}}>
+					{logs.map((log, index) => (
+						<div key={index}>{log}</div>
+					))}
+				</div>
+			</div>
 		</div>
 	);
 };
