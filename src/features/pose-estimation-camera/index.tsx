@@ -6,6 +6,7 @@ import "@tensorflow/tfjs-backend-webgl";
 import { isDeviantBehavior, isFallingBehavior } from "../../utils/is-deviant-behavior";
 import { PoseDetector } from "./pose-detector";
 import "./pose-estimation-camera.scss";
+import { Flex, Typography } from "antd";
 
 const COEF_SCORE = 0.4;
 
@@ -55,7 +56,6 @@ export const PoseEstimationCamera: React.FC<IPoseEstimationCameraProps> = ({ add
 				setPreviousPose(poses[0]);
 				setLastFrameTime(performance.now());
 			}
-			console.log(poses);
 
 			const canvas = canvasRef.current;
 			if (!canvas) return;
@@ -126,10 +126,13 @@ export const PoseEstimationCamera: React.FC<IPoseEstimationCameraProps> = ({ add
 	);
 
 	return (
-		<div className="pose-estimation-camera-container">
-			<PoseDetector drawCanvas={drawCanvas} videoSource="http://localhost:4000/stream.mp4" />
+		<Flex vertical gap={8} style={{ height: "100%", width: "70%" }}>
+			<Typography.Title>Камера</Typography.Title>
+			<div className="pose-estimation-camera-container">
+				<PoseDetector drawCanvas={drawCanvas} videoSource="http://localhost:4000/hls/stream.m3u8" />
 
-			<canvas ref={canvasRef} className="canvas" />
-		</div>
+				<canvas ref={canvasRef} className="canvas" />
+			</div>
+		</Flex>
 	);
 };

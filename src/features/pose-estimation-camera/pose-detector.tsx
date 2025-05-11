@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from "react";
 import * as tf from "@tensorflow/tfjs";
 import * as poseDetection from "@tensorflow-models/pose-detection";
 import "@tensorflow/tfjs-backend-webgl";
+import Hls from "hls.js";
 
 interface ICameraCanvasProps {
 	drawCanvas: (poses: poseDetection.Pose[], canvas: HTMLVideoElement) => void;
@@ -62,16 +63,34 @@ export const PoseDetector: React.FC<ICameraCanvasProps> = ({ drawCanvas, videoSo
 		return () => clearInterval(interval);
 	}, [detect, isCanPlayState]);
 
+	React.useEffect(() => {
+		if (!videoRef.current) return;
+
+		if (Hls.isSupported()) {
+			const hls = new Hls();
+			hls.loadSource("http://localhost:4000/hls/stream.m3u8");
+			hls.attachMedia(videoRef.current);
+			hls.on(Hls.Events.MANIFEST_PARSED, function () {
+				console.log("Manifest parsed, video is ready");
+			});
+			hls.on(Hls.Events.ERROR, function (event, data) {
+				console.error("Error during playback:", data);
+			});
+		} else {
+			console.error("HLS is not supported in this browser");
+		}
+	}, []);
+
 	return (
 		<video
 			ref={videoRef}
-			src={videoSource}
 			autoPlay
 			playsInline
 			crossOrigin="anonymous"
 			muted
 			onCanPlay={() => setIsCanPlayState(true)}
 			width="100%"
+			src={videoSource}
 			height="100%"
 		/>
 	);
