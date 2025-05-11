@@ -1,3 +1,4 @@
+// hls-server.js
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -14,6 +15,8 @@ if (!fs.existsSync(OUTPUT_DIR)) {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 }
 
+const segmentBuffer = [];
+
 function cleanupOldSegments() {
     const files = fs.readdirSync(OUTPUT_DIR)
         .filter(f => f.endsWith(".ts"))
@@ -25,6 +28,9 @@ function cleanupOldSegments() {
             fs.unlinkSync(path.join(OUTPUT_DIR, file));
             console.log(`🗑 Удалён старый сегмент: ${file}`);
         });
+
+        // Удаляем сегменты из буфера
+        segmentBuffer.splice(0, toDelete.length);
     }
 }
 
@@ -64,8 +70,7 @@ function startHLSServer() {
     console.log("📡 HLS сервер запущен, RTSP трансляция идёт...");
 }
 
-const segmentBuffer = [];
-
+// Наблюдение за директорией для добавления сегментов в буфер
 function watchHlsFolder() {
     fs.watch(OUTPUT_DIR, (eventType, filename) => {
         if (filename && filename.endsWith('.ts') && eventType === 'rename') {

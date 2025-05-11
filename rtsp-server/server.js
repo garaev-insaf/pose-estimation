@@ -31,79 +31,79 @@ app.get('/api/clips', async (req, res) => {
 });
 
 // 📼 Запись клипа по сегментам
-async function recordClip() {
-    try {
-        const now = Date.now();
+// async function recordClip() {
+//     try {
+//         const now = Date.now();
 
-        if (!segmentBuffer || segmentBuffer.length === 0) {
-            throw new Error("segmentBuffer пуст или не инициализирован.");
-        }
+//         if (!segmentBuffer || segmentBuffer.length === 0) {
+//             throw new Error("segmentBuffer пуст или не инициализирован.");
+//         }
 
-        // Фильтрация сегментов за последние ±10 секунд
-        const clipSegments = segmentBuffer.filter(seg => {
-            const diff = (seg.timestamp - now) / 1000;
-            return diff >= -10 && diff <= 10;
-        });
+//         // Фильтрация сегментов за последние ±10 секунд
+//         const clipSegments = segmentBuffer.filter(seg => {
+//             const diff = (seg.timestamp - now) / 1000;
+//             return diff >= -10 && diff <= 10;
+//         });
 
-        if (clipSegments.length === 0) {
-            throw new Error("Нет сегментов для создания клипа.");
-        }
+//         if (clipSegments.length === 0) {
+//             throw new Error("Нет сегментов для создания клипа.");
+//         }
 
-        const clipId = Date.now();
-        const outputDir = path.join(__dirname, 'public/output_clips');
-        const outputFile = `clip-${clipId}.mp4`;
-        const outputPath = path.join(outputDir, outputFile);
+//         const clipId = Date.now();
+//         const outputDir = path.join(__dirname, 'public/output_clips');
+//         const outputFile = `clip-${clipId}.mp4`;
+//         const outputPath = path.join(outputDir, outputFile);
 
-        // Создаём список файлов для ffmpeg
-        const fileListPath = path.join(os.tmpdir(), `clip-files-${clipId}.txt`);
-        const fileListContent = clipSegments.map(seg => `file '${seg.fullPath}'`).join('\n');
-        fs.writeFileSync(fileListPath, fileListContent);
+//         // Создаём список файлов для ffmpeg
+//         const fileListPath = path.join(os.tmpdir(), `clip-files-${clipId}.txt`);
+//         const fileListContent = clipSegments.map(seg => `file '${seg.fullPath}'`).join('\n');
+//         fs.writeFileSync(fileListPath, fileListContent);
 
-        // Конвертация сегментов в mp4
-        const ffmpeg = spawn("ffmpeg", [
-            "-f", "concat",
-            "-safe", "0",
-            "-i", fileListPath,
-            "-c", "copy",
-            outputPath
-        ]);
+//         // Конвертация сегментов в mp4
+//         const ffmpeg = spawn("ffmpeg", [
+//             "-f", "concat",
+//             "-safe", "0",
+//             "-i", fileListPath,
+//             "-c", "copy",
+//             outputPath
+//         ]);
 
-        ffmpeg.stderr.on("data", (data) => {
-            console.error("FFmpeg stderr:", data.toString());
-        });
+//         ffmpeg.stderr.on("data", (data) => {
+//             console.error("FFmpeg stderr:", data.toString());
+//         });
 
-        ffmpeg.on("close", async (code) => {
-            fs.unlinkSync(fileListPath);
+//         ffmpeg.on("close", async (code) => {
+//             fs.unlinkSync(fileListPath);
 
-            if (code !== 0) {
-                console.error(`❌ FFmpeg завершился с кодом ${code}`);
-                return;
-            }
+//             if (code !== 0) {
+//                 console.error(`❌ FFmpeg завершился с кодом ${code}`);
+//                 return;
+//             }
 
-            console.log(`✅ Клип сохранён: ${outputPath}`);
+//             console.log(`✅ Клип сохранён: ${outputPath}`);
 
-            const clipData = {
-                id: clipId,
-                camera_id: 1,
-                camera_name: 'Camera 1',
-                template_name: 'Loitering',
-                created_at: new Date().toISOString(),
-                score: 0.95,
-                clip_url: `http://localhost:4000/clips/${outputFile}`
-            };
+//             const clipData = {
+//                 id: clipId,
+//                 camera_id: 1,
+//                 camera_name: 'Camera 1',
+//                 template_name: 'Loitering',
+//                 created_at: new Date().toISOString(),
+//                 score: 0.95,
+//                 clip_url: `http://localhost:4000/clips/${outputFile}`
+//             };
 
-            try {
-                await addClip(clipData);
-                console.log("📦 Данные о клипе добавлены в базу");
-            } catch (err) {
-                console.error("❌ Ошибка при добавлении в базу:", err);
-            }
-        });
-    } catch (err) {
-        console.error("❌ Ошибка в recordClip():", err);
-        throw err;
-    }
-}
+//             try {
+//                 await addClip(clipData);
+//                 console.log("📦 Данные о клипе добавлены в базу");
+//             } catch (err) {
+//                 console.error("❌ Ошибка при добавлении в базу:", err);
+//             }
+//         });
+//     } catch (err) {
+//         console.error("❌ Ошибка в recordClip():", err);
+//         throw err;
+//     }
+// }
 
 // ⚙️ Пункт проверки сервера
 app.get("/", (req, res) => {
