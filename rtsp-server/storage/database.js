@@ -21,8 +21,25 @@ async function addClip(clipData) {
     return result.rows[0].id;
 }
 
+async function addCamera(cameraData) {
+    const { name, source } = cameraData;
+
+    const result = await pool.query(
+        `INSERT INTO cameras (name, source)
+     VALUES ($1, $2) RETURNING id`,
+        [name, source]
+    );
+
+    return result.rows[0].id;
+}
+
 async function getClips() {
     const result = await pool.query('SELECT * FROM clips ORDER BY created_at DESC');
+    return result.rows;
+}
+
+async function getCameras() {
+    const result = await pool.query('SELECT * FROM cameras ORDER BY created_at DESC');
     return result.rows;
 }
 
@@ -31,8 +48,16 @@ async function getClipById(id) {
     return result.rows[0];
 }
 
+async function getCameraById(id) {
+    const result = await pool.query('SELECT * FROM cameras WHERE id = $1', [id]);
+    return result.rows[0];
+}
+
 module.exports = {
     addClip,
     getClips,
     getClipById,
+    getCameras,
+    addCamera,
+    getCameraById
 };

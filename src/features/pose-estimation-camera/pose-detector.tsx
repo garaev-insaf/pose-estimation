@@ -68,18 +68,18 @@ export const PoseDetector: React.FC<ICameraCanvasProps> = ({ drawCanvas, videoSo
 
 		if (Hls.isSupported()) {
 			const hls = new Hls();
-			hls.loadSource("http://localhost:4000/hls/stream.m3u8");
+			hls.loadSource(videoSource);
 			hls.attachMedia(videoRef.current);
 			hls.on(Hls.Events.MANIFEST_PARSED, function () {
 				console.log("Manifest parsed, video is ready");
 			});
-			hls.on(Hls.Events.ERROR, function (event, data) {
+			hls.on(Hls.Events.ERROR, function (_, data) {
 				console.error("Error during playback:", data);
 			});
 		} else {
 			console.error("HLS is not supported in this browser");
 		}
-	}, []);
+	}, [videoSource]);
 
 	return (
 		<video

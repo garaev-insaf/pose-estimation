@@ -1,40 +1,52 @@
-// storage/clip-writer.js
-
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { addClip } = require('./database'); // Импорт функции напрямую
+const { addClip } = require('./database');
 
-// Функция для записи клипа в папку и базу данных
-async function saveClip(cameraId, cameraName, templateName, startTime, endTime, rtspUrl) {
-    const clipId = Date.now(); // Используем метку времени как уникальный ID
+async function saveClipFromSegments({ cameraId, cameraName, templateName, startTimestamp, endTimestamp, segmentBuffer }) {
+    const clipId = Date.now();
     const outputDir = path.join(__dirname, '../public/output_clips', `${clipId}`);
+    const tempDir = path.join(outputDir, 'tmp');
+    const concatFile = path.join(tempDir, 'concat.txt');
     const outputFilePath = path.join(outputDir, 'clip.mp4');
 
-    // Создание директории
-    fs.mkdirSync(outputDir, { recursive: true });
+    fs.mkdirSync(tempDir, { recursive: true });
 
-    console.log(`[FFmpeg] Старт записи клипа: ${startTime} - ${endTime}`);
+    const selectedSegments = segmentBuffer.filter(seg =>
+        seg.timestamp >= startTimestamp && seg.timestamp <= endTimestamp
+    );
 
+    if (selectedSegments.length === 0) {
+        console.error('❌ Нет подходящих сегментов для записи клипа.');
+        return;
+    }
+
+    // Копируем .ts файлы и создаем concat.txt
+    const concatLines = [];
+    for (let i = 0; i < selectedSegments.length; i++) {
+        const seg = selectedSegments[i];
+        const dest = path.join(tempDir, `seg_${i}.ts`);
+        fs.copyFileSync(seg.fullPath, dest);
+        concatLines.push(`file '${dest}'`);
+    }
+    fs.writeFileSync(concatFile, concatLines.join('\n'));
+
+    // FFmpeg склеивание
     const ffmpeg = spawn('ffmpeg', [
-        '-i', rtspUrl,
-        '-ss', startTime,
-        '-to', endTime,
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-tune', 'zerolatency',
-        '-f', 'mp4',
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', concatFile,
+        '-c', 'copy',
         outputFilePath
     ]);
 
-    ffmpeg.stderr.on('data', (data) => {
+    ffmpeg.stderr.on('data', data => {
         console.error('[FFmpeg]', data.toString());
     });
 
     ffmpeg.on('close', async (code) => {
         if (code === 0) {
-            console.log(`✅ Клип сохранен: ${outputFilePath}`);
-
+            console.log(`✅ Клип сохранён: ${outputFilePath}`);
             const clipData = {
                 id: clipId,
                 camera_id: cameraId,
@@ -47,7 +59,7 @@ async function saveClip(cameraId, cameraName, templateName, startTime, endTime, 
 
             try {
                 await addClip(clipData);
-                console.log(`✅ Данные о клипе ${clipId} добавлены в базу.`);
+                console.log(`✅ Данные о клипе добавлены в базу.`);
             } catch (err) {
                 console.error('❌ Ошибка при добавлении в базу:', err);
             }
@@ -57,4 +69,4 @@ async function saveClip(cameraId, cameraName, templateName, startTime, endTime, 
     });
 }
 
-module.exports = { saveClip };
+module.exports = { saveClipFromSegments };

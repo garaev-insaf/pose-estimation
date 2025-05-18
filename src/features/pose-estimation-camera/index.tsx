@@ -7,6 +7,8 @@ import { isDeviantBehavior, isFallingBehavior } from "../../utils/is-deviant-beh
 import { PoseDetector } from "./pose-detector";
 import "./pose-estimation-camera.scss";
 import { Flex, Typography } from "antd";
+import { useParams } from "react-router-dom";
+import { useGetCameraStream } from "@shared/api/cameras";
 
 const COEF_SCORE = 0.4;
 
@@ -17,6 +19,10 @@ interface IPoseEstimationCameraProps {
 
 export const PoseEstimationCamera: React.FC<IPoseEstimationCameraProps> = ({ addLog }) => {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
+	const params = useParams();
+	const { data: streamUrl = "" } = useGetCameraStream(params.id as unknown as number, {
+		enabled: !!params.id,
+	});
 	const [previousPose, setPreviousPose] = useState<poseDetection.Pose | null>(null);
 	const [lastFrameTime, setLastFrameTime] = useState<number | null>(null);
 
@@ -70,7 +76,6 @@ export const PoseEstimationCamera: React.FC<IPoseEstimationCameraProps> = ({ add
 
 			// Draw video frame on canvas
 			ctx.save();
-			ctx.scale(-1, 1); // Mirror the video horizontally
 			ctx.translate(-canvas.width, 0);
 			ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 			ctx.restore();
@@ -92,10 +97,9 @@ export const PoseEstimationCamera: React.FC<IPoseEstimationCameraProps> = ({ add
 				pose.keypoints.forEach((keypoint) => {
 					if (keypoint.score && keypoint.score > COEF_SCORE) {
 						// Mirror the x-coordinate of the keypoint
-						const mirroredX = canvas.width - keypoint.x;
-						const { y } = keypoint;
+						const { x, y } = keypoint;
 						ctx.beginPath();
-						ctx.arc(mirroredX, y, 5, 0, 2 * Math.PI);
+						ctx.arc(x, y, 5, 0, 2 * Math.PI);
 						ctx.fillStyle = skeletonColor;
 						ctx.fill();
 					}
@@ -110,11 +114,9 @@ export const PoseEstimationCamera: React.FC<IPoseEstimationCameraProps> = ({ add
 					const kp2 = pose.keypoints[end];
 
 					if (kp1.score && kp1.score > COEF_SCORE && kp2.score && kp2.score > COEF_SCORE) {
-						const mirroredX1 = canvas.width - kp1.x;
-						const mirroredX2 = canvas.width - kp2.x;
 						ctx.beginPath();
-						ctx.moveTo(mirroredX1, kp1.y);
-						ctx.lineTo(mirroredX2, kp2.y);
+						ctx.moveTo(kp1.x, kp1.y);
+						ctx.lineTo(kp2.x, kp2.y);
 						ctx.strokeStyle = skeletonColor;
 						ctx.lineWidth = 2;
 						ctx.stroke();
@@ -129,7 +131,8 @@ export const PoseEstimationCamera: React.FC<IPoseEstimationCameraProps> = ({ add
 		<Flex vertical gap={8} style={{ height: "100%", width: "70%" }}>
 			<Typography.Title>Камера</Typography.Title>
 			<div className="pose-estimation-camera-container">
-				<PoseDetector drawCanvas={drawCanvas} videoSource="http://localhost:4000/hls/stream.m3u8" />
+				<PoseDetector drawCanvas={drawCanvas} videoSource={`http://localhost:4000${streamUrl}`} />
+				{/* <PoseDetector drawCanvas={drawCanvas} videoSource="http://localhost:4000/hls/stream.m3u8" /> */}
 
 				<canvas ref={canvasRef} className="canvas" />
 			</div>
